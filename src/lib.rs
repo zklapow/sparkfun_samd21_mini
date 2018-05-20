@@ -5,6 +5,7 @@ extern crate atsamd21_hal as hal;
 pub use hal::atsamd21g18a::*;
 use hal::prelude::*;
 pub use hal::*;
+pub use hal::usb as usb;
 
 use gpio::{Floating, Input, Port};
 
@@ -40,6 +41,9 @@ pub struct Pins {
     pub led: gpio::Pa17<Input<Floating>>,
     pub tx_led: gpio::Pa27<Input<Floating>>,
     pub rx_led: gpio::Pb3<Input<Floating>>,
+
+    pub dm: gpio::Pa24<Input<Floating>>,
+    pub dp: gpio::Pa25<Input<Floating>>,
 }
 
 pub fn pins(port: atsamd21g18a::PORT) -> Pins {
@@ -69,6 +73,9 @@ pub fn pins(port: atsamd21g18a::PORT) -> Pins {
         led: pins.pa17,
         tx_led: pins.pa27,
         rx_led: pins.pb3,
+
+        dm: pins.pa24,
+        dp: pins.pa25,
     }
 }
 
