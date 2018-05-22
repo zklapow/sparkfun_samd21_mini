@@ -2,7 +2,10 @@
 
 extern crate atsamd21_hal as hal;
 
-pub use hal::atsamd21g18a::*;
+pub mod prelude;
+
+pub use hal::target_device::*;
+
 use hal::prelude::*;
 pub use hal::*;
 pub use hal::usb as usb;
@@ -15,8 +18,8 @@ pub struct Pins {
     /// Opaque port reference
     pub port: Port,
 
-    pub tx: gpio::Pa10<Input<Floating>>,
-    pub rx: gpio::Pa11<Input<Floating>>,
+    pub rx: gpio::Pa10<Input<Floating>>,
+    pub tx: gpio::Pa11<Input<Floating>>,
 
     pub aref: gpio::Pa3<Input<Floating>>,
     
@@ -51,8 +54,8 @@ pub fn pins(port: atsamd21g18a::PORT) -> Pins {
 
     Pins {
         port: pins.port,
-        tx: pins.pa10,
-        rx: pins.pa11,
+        rx: pins.pa10,
+        tx: pins.pa11,
 
         aref: pins.pa3,
         d2: pins.pa14,
