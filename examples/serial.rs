@@ -47,23 +47,18 @@ app! {
     }
 }
 
-const  buffer: &'static str = "Hello World";
+const BUFFER: &'static str = "Hello World";
 
 fn int_tc3(t: &mut Threshold, mut r: TC3::Resources) {
     if r.TIMER.wait().is_ok() {
-        for word in buffer.bytes() {
-            match r.UART.write(word.clone()) {
-                Ok(()) => {
-                    r.TX_LED.set_low();
-                }
-                Err(_) => {
-                    r.RX_LED.set_low();
-                }
+        match r.UART.bwrite_all(BUFFER.as_bytes()) {
+            Ok(()) => {
+                r.TX_LED.toggle();
+            }
+            Err(_) => {
+                r.RX_LED.toggle();
             }
         }
-
-        r.TX_LED.set_high();
-        r.RX_LED.set_high();
     }
 }
 
@@ -101,7 +96,7 @@ fn init(mut p: init::Peripherals) -> init::LateResources {
     let tx_pin: Sercom0Pad2 = pins.tx.into_push_pull_output(&mut pins.port).into_pad(&mut pins.port);
     let uart_clk = clocks.sercom0_core(&gclk2).expect("Could not configure sercom0 core clock");
 
-    let mut uart = Uart::new(&uart_clk, 9600.hz(), p.device.SERCOM0, &mut p.core.NVIC,&mut p.device.PM, tx_pin, rx_pin);
+    let mut uart = Uart::new(&uart_clk, 9600.hz(), p.device.SERCOM0, &mut p.core.NVIC, &mut p.device.PM, tx_pin, rx_pin);
 
     let mut rx_led = pins.rx_led.into_open_drain_output(&mut pins.port);
     let mut tx_led = pins.tx_led.into_open_drain_output(&mut pins.port);
