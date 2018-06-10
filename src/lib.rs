@@ -18,8 +18,8 @@ pub struct Pins {
     /// Opaque port reference
     pub port: Port,
 
-    pub rx: gpio::Pa10<Input<Floating>>,
-    pub tx: gpio::Pa11<Input<Floating>>,
+    pub tx: gpio::Pa10<Input<Floating>>,
+    pub rx: gpio::Pa11<Input<Floating>>,
 
     pub aref: gpio::Pa3<Input<Floating>>,
     
@@ -54,8 +54,8 @@ pub fn pins(port: atsamd21g18a::PORT) -> Pins {
 
     Pins {
         port: pins.port,
-        rx: pins.pa10,
-        tx: pins.pa11,
+        rx: pins.pa11,
+        tx: pins.pa10,
 
         aref: pins.pa3,
         d2: pins.pa14,

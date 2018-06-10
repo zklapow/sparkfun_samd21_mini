@@ -2,23 +2,21 @@
 #![feature(proc_macro)]
 #![no_std]
 
+extern crate atsamd21_hal as atsamd21;
 extern crate cortex_m;
 extern crate cortex_m_rtfm as rtfm;
-extern crate atsamd21_hal as atsamd21;
-extern crate sparkfun_samd21_mini as hal;
 extern crate embedded_hal;
 extern crate panic_abort;
-
-use hal::prelude::*;
-use hal::clock::{GenericClockController};
-use hal::delay::Delay;
-use hal::sercom::{Uart, PadPin, Sercom0Pad2, Sercom0Pad3};
-use hal::target_device::{Peripherals};
-use hal::target_device::gclk::clkctrl::GENR;
-use hal::target_device::gclk::genctrl::SRCR;
+extern crate sparkfun_samd21_mini as hal;
 
 use embedded_hal::blocking::serial::Write;
-
+use hal::clock::GenericClockController;
+use hal::delay::Delay;
+use hal::prelude::*;
+use hal::sercom::{PadPin, Sercom0Pad2, Sercom0Pad3, Uart};
+use hal::target_device::gclk::clkctrl::GENR;
+use hal::target_device::gclk::genctrl::SRCR;
+use hal::target_device::Peripherals;
 use rtfm::{app, Threshold};
 
 macro_rules! dbgprint {
@@ -30,18 +28,46 @@ app! {
 
     resources: {
         static BLUE_LED: hal::gpio::Pa17<hal::gpio::Output<hal::gpio::OpenDrain>>;
+        static TX_LED: hal::gpio::Pa27<hal::gpio::Output<hal::gpio::OpenDrain>>;
+        static RX_LED: hal::gpio::Pb3<hal::gpio::Output<hal::gpio::OpenDrain>>;
+
         static UART: Uart;
+        static TIMER: hal::timer::TimerCounter3;
     },
 
     tasks: {
+        TC3: {
+            path: int_tc3,
+            resources: [TIMER, UART, RX_LED, TX_LED],
+        },
         SERCOM0: {
-            path: uart,
-            resources: [UART, BLUE_LED],
+            path: int_uart,
+            resources: [UART, BLUE_LED]
         },
     }
 }
 
-fn uart(t: &mut Threshold, mut r: SERCOM0::Resources) {
+const  buffer: &'static str = "Hello World";
+
+fn int_tc3(t: &mut Threshold, mut r: TC3::Resources) {
+    if r.TIMER.wait().is_ok() {
+        for word in buffer.bytes() {
+            match r.UART.write(word.clone()) {
+                Ok(()) => {
+                    r.TX_LED.set_low();
+                }
+                Err(_) => {
+                    r.RX_LED.set_low();
+                }
+            }
+        }
+
+        r.TX_LED.set_high();
+        r.RX_LED.set_high();
+    }
+}
+
+fn int_uart(t: &mut Threshold, mut r: SERCOM0::Resources) {
     r.BLUE_LED.toggle();
 }
 
@@ -68,28 +94,39 @@ fn init(mut p: init::Peripherals) -> init::LateResources {
 
     dbgprint!("Initializing serial port");
 
-    let rx_pin: Sercom0Pad2 = pins.rx.into_pad(&mut pins.port);
-    let tx_pin: Sercom0Pad3 = pins.tx.into_pad(&mut pins.port);
+    let mut led = pins.led.into_open_drain_output(&mut pins.port);
+    led.set_low();
+
+    let rx_pin: Sercom0Pad3 = pins.rx.into_pull_down_input(&mut pins.port).into_pad(&mut pins.port);
+    let tx_pin: Sercom0Pad2 = pins.tx.into_push_pull_output(&mut pins.port).into_pad(&mut pins.port);
     let uart_clk = clocks.sercom0_core(&gclk2).expect("Could not configure sercom0 core clock");
 
-    pins.rx_led.into_open_drain_output(&mut pins.port).set_low();
-    let mut uart = Uart::new(&uart_clk, 9600.hz(), p.device.SERCOM0, &mut p.device.PM, tx_pin, rx_pin);
+    let mut uart = Uart::new(&uart_clk, 9600.hz(), p.device.SERCOM0, &mut p.core.NVIC,&mut p.device.PM, tx_pin, rx_pin);
 
-    let buffer: &[u8] = "Hello World".as_bytes();
-
+    let mut rx_led = pins.rx_led.into_open_drain_output(&mut pins.port);
     let mut tx_led = pins.tx_led.into_open_drain_output(&mut pins.port);
-    let mut delay = Delay::new(p.core.SYST, &mut clocks);
-    loop {
-        uart.bwrite_all(buffer).expect("Failed to write to USART");
-        tx_led.set_low();
 
-        delay.delay_ms(200u8);
-        tx_led.set_high();
-    }
+    tx_led.set_low();
+    rx_led.set_low();
+
+    // Set up periodic sending
+    let gclk0 = clocks.gclk0();
+
+    let mut tc3 = hal::timer::TimerCounter::tc3_(
+        &clocks.tcc2_tc3(&gclk0).unwrap(),
+        p.device.TC3,
+        &mut p.device.PM,
+    );
+    dbgprint!("start timer");
+    tc3.start(1.hz());
+    tc3.enable_interrupt();
 
     dbgprint!("done init");
     init::LateResources {
-        BLUE_LED: pins.led.into_open_drain_output(&mut pins.port),
+        BLUE_LED: led,
+        TX_LED: tx_led,
+        RX_LED: rx_led,
         UART: uart,
+        TIMER: tc3,
     }
 }
