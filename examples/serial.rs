@@ -5,18 +5,17 @@
 extern crate atsamd21_hal as atsamd21;
 extern crate cortex_m;
 extern crate cortex_m_rtfm as rtfm;
+#[macro_use]
+extern crate nb;
 extern crate embedded_hal;
 extern crate panic_abort;
 extern crate sparkfun_samd21_mini as hal;
 
-use embedded_hal::blocking::serial::Write;
 use hal::clock::GenericClockController;
-use hal::delay::Delay;
 use hal::prelude::*;
 use hal::sercom::{PadPin, Sercom0Pad2, Sercom0Pad3, Uart};
 use hal::target_device::gclk::clkctrl::GENR;
 use hal::target_device::gclk::genctrl::SRCR;
-use hal::target_device::Peripherals;
 use rtfm::{app, Threshold};
 
 macro_rules! dbgprint {
@@ -32,38 +31,37 @@ app! {
         static RX_LED: hal::gpio::Pb3<hal::gpio::Output<hal::gpio::OpenDrain>>;
 
         static UART: Uart;
-        static TIMER: hal::timer::TimerCounter3;
     },
 
     tasks: {
-        TC3: {
-            path: int_tc3,
-            resources: [TIMER, UART, RX_LED, TX_LED],
-        },
         SERCOM0: {
             path: int_uart,
-            resources: [UART, BLUE_LED]
+            resources: [UART, RX_LED, TX_LED, BLUE_LED]
         },
     }
 }
 
-const BUFFER: &'static str = "Hello World";
+fn int_uart(_t: &mut Threshold, mut r: SERCOM0::Resources) {
+    r.RX_LED.set_low();
+    let data = match block!(r.UART.read()) {
+        Ok(v) => {
+            r.RX_LED.set_high();
+            v
+        },
+        Err(_) => {
+            0 as u8
+        }
+    };
 
-fn int_tc3(t: &mut Threshold, mut r: TC3::Resources) {
-    if r.TIMER.wait().is_ok() {
-        match r.UART.bwrite_all(BUFFER.as_bytes()) {
-            Ok(()) => {
-                r.TX_LED.toggle();
-            }
-            Err(_) => {
-                r.RX_LED.toggle();
-            }
+    r.TX_LED.set_low();
+    match block!(r.UART.write(data)) {
+        Ok(_) => {
+            r.TX_LED.set_high();
+        },
+        Err(_) => {
+            unimplemented!()
         }
     }
-}
-
-fn int_uart(t: &mut Threshold, mut r: SERCOM0::Resources) {
-    r.BLUE_LED.toggle();
 }
 
 fn idle() -> ! {
@@ -96,25 +94,13 @@ fn init(mut p: init::Peripherals) -> init::LateResources {
     let tx_pin: Sercom0Pad2 = pins.tx.into_push_pull_output(&mut pins.port).into_pad(&mut pins.port);
     let uart_clk = clocks.sercom0_core(&gclk2).expect("Could not configure sercom0 core clock");
 
-    let mut uart = Uart::new(&uart_clk, 9600.hz(), p.device.SERCOM0, &mut p.core.NVIC, &mut p.device.PM, tx_pin, rx_pin);
+    let uart = Uart::new(&uart_clk, 9600.hz(), p.device.SERCOM0, &mut p.core.NVIC, &mut p.device.PM, tx_pin, rx_pin);
 
     let mut rx_led = pins.rx_led.into_open_drain_output(&mut pins.port);
     let mut tx_led = pins.tx_led.into_open_drain_output(&mut pins.port);
 
-    tx_led.set_low();
-    rx_led.set_low();
-
-    // Set up periodic sending
-    let gclk0 = clocks.gclk0();
-
-    let mut tc3 = hal::timer::TimerCounter::tc3_(
-        &clocks.tcc2_tc3(&gclk0).unwrap(),
-        p.device.TC3,
-        &mut p.device.PM,
-    );
-    dbgprint!("start timer");
-    tc3.start(1.hz());
-    tc3.enable_interrupt();
+    tx_led.set_high();
+    rx_led.set_high();
 
     dbgprint!("done init");
     init::LateResources {
@@ -122,6 +108,5 @@ fn init(mut p: init::Peripherals) -> init::LateResources {
         TX_LED: tx_led,
         RX_LED: rx_led,
         UART: uart,
-        TIMER: tc3,
     }
 }
